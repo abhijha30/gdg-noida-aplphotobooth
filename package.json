@@ -1,0 +1,30 @@
+{
+  "name": "gdg-noida-photobooth",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "14.2.5",
+    "react": "^18",
+    "react-dom": "^18",
+    "@mediapipe/face_detection": "^0.4.1646425229",
+    "@mediapipe/camera_utils": "^0.3.1675466862",
+    "canvas-confetti": "^1.9.3",
+    "framer-motion": "^11.3.8"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@types/canvas-confetti": "^1.6.4",
+    "tailwindcss": "^3.4.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38"
+  }
+}
