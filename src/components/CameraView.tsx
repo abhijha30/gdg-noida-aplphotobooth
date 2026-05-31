@@ -124,10 +124,11 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
               jerseyPosition.height
             );
 
-          ctx.globalAlpha = 1;
-        }
-      animFrameRef.current = requestAnimationFrame(drawFrame);
-    };
+            ctx.globalAlpha = 1;
+          }
+          
+          animFrameRef.current = requestAnimationFrame(drawFrame);
+      };
       drawFrame();
 
       return () => {
