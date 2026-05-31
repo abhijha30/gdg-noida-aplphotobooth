@@ -188,9 +188,12 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
             ←
           </button>
 
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/40 backdrop-blur-sm border border-white/10">
-            <GDGLogo size={18} />
-            <span className="font-display font-700 text-sm text-white">GDG Noida</span>
+          <div className="px-3 py-2 rounded-xl bg-black/40 backdrop-blur-sm border border-white/10">
+            <img
+              src="/gdg-noida-logo.png"
+              alt="GDG Noida"
+              className="h-10 w-auto"
+            />
           </div>
 
           {/* Face indicator */}
