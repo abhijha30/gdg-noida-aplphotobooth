@@ -255,7 +255,7 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
               >
                 <div className="px-4 py-2 rounded-full bg-black/50 backdrop-blur-sm border border-white/10">
                   <p className="text-white/70 text-xs font-body">
-                    📍 Position your face in frame
+                    👕 Place your face inside the collar
                   </p>
                 </div>
               </motion.div>
