@@ -1,373 +1,268 @@
-"use client";
-
-import {
+import React, {
   useEffect,
   useRef,
   useState,
   useCallback,
-  forwardRef,
-  useImperativeHandle,
+  useMemo,
 } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { GDGLogo } from "./GDGLogo";
-import { JerseyPosition } from "@/hooks/useFaceDetection";
+import { useFaceDetection } from "../hooks/useFaceDetection";
+import { usePhotoCapture } from "../hooks/usePhotoCapture";
+
+// ─── Jersey positioning constants ────────────────────────────────────────────
+// These are the ONLY values that control the jersey overlay.
+// MediaPipe / face detection NEVER modifies these.
+//
+// CSS overlay (live preview):
+//   width  = JERSEY_WIDTH_PCT % of the container width
+//   top    = JERSEY_TOP_PCT   % of the container height  (collar anchor)
+//   left   = 50% with translateX(-50%) → horizontally centred
+//
+// Canvas capture must replicate these exactly.
+const JERSEY_WIDTH_PCT  = 0.92;   // 92 % of frame width
+const JERSEY_TOP_PCT    = 0.38;   // collar top at 38 % from top
 
 interface CameraViewProps {
-  videoRef: React.RefObject<HTMLVideoElement>;
-  jerseyPosition: JerseyPosition | null;
-  faceCount: number;
-  onCapture: () => void;
+  onCapture: (dataUrl: string) => void;
   onBack: () => void;
-  isCapturing: boolean;
 }
 
-export interface CameraViewHandle {
-  triggerFlash: () => void;
-}
+type CameraState = "requesting" | "active" | "error" | "countdown" | "captured";
 
-const COUNTDOWN_SECONDS = 3;
+const CameraView: React.FC<CameraViewProps> = ({ onCapture, onBack }) => {
+  const videoRef        = useRef<HTMLVideoElement>(null);
+  const containerRef    = useRef<HTMLDivElement>(null);
+  const overlayImgRef   = useRef<HTMLImageElement>(null);
+  const streamRef       = useRef<MediaStream | null>(null);
 
-export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
-  function CameraView(
-    { videoRef, jerseyPosition, faceCount, onCapture, onBack, isCapturing },
-    ref
-  ) {
-    const containerRef    = useRef<HTMLDivElement>(null);
-    const jerseyCanvasRef = useRef<HTMLCanvasElement>(null);
-    const jerseyImgRef    = useRef<HTMLImageElement | null>(null);
-    const animFrameRef    = useRef<number | null>(null);
+  const [cameraState, setCameraState] = useState<CameraState>("requesting");
+  const [countdown, setCountdown]      = useState(0);
+  const [flashActive, setFlashActive]  = useState(false);
+  const [jerseyLoaded, setJerseyLoaded] = useState(false);
 
-    const [countdown, setCountdown]             = useState<number | null>(null);
-    const [showFlash, setShowFlash]             = useState(false);
-    const [isLandscapeWarning, setIsLandscape]  = useState(false);
-    const [canvasSize, setCanvasSize]           = useState({ w: 0, h: 0 });
+  // Face detection — UI guidance only, NOT used for positioning
+  const facePos = useFaceDetection(videoRef);
 
-    useImperativeHandle(ref, () => ({
-      triggerFlash: () => {
-        setShowFlash(true);
-        setTimeout(() => setShowFlash(false), 400);
-      },
-    }));
+  // Photo capture hook
+  const { capturePhoto } = usePhotoCapture(videoRef, overlayImgRef);
 
-    // Load jersey image once
-    useEffect(() => {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.src = "/gdg-overlay-v2.png";
-      img.onload = () => { jerseyImgRef.current = img; };
-    }, []);
+  // ── Start camera ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    let mounted = true;
 
-    // ─── BUG FIX #6 ──────────────────────────────────────────────────────────
-    // The ResizeObserver must update canvas.width and canvas.height (the
-    // *intrinsic* canvas resolution) to match the displayed pixel size.
-    // Previously this was done via state, then applied in the draw useEffect.
-    // However, changing canvas.width/height inside a draw loop resets the
-    // context state (clears the canvas, loses transforms).  More importantly,
-    // the canvas element itself needs its width/height attributes set to the
-    // display size so that 1 canvas pixel == 1 CSS pixel, otherwise MediaPipe
-    // coordinates (which are normalised to the video then mapped to the canvas)
-    // won't align with what is drawn.
-    //
-    // We keep state as the trigger for re-rendering but apply the dimensions
-    // directly to the canvas element in the draw effect, which is correct.
-    // ─────────────────────────────────────────────────────────────────────────
-    useEffect(() => {
-      const el = containerRef.current;
-      if (!el) return;
-      const obs = new ResizeObserver((entries) => {
-        const { width, height } = entries[0].contentRect;
-        const w = Math.round(width);
-        const h = Math.round(height);
-        setCanvasSize({ w, h });
+    async function startCamera() {
+      try {
+        // Prefer environment-facing on mobile; fall back to user (front) camera
+        // For a selfie photobooth we actually want the FRONT camera
+        const constraints: MediaStreamConstraints = {
+          video: {
+            facingMode: "user",
+            width:  { ideal: 1080 },
+            height: { ideal: 1920 },
+            aspectRatio: { ideal: 9 / 16 },
+          },
+          audio: false,
+        };
 
-        // Also set canvas intrinsic size immediately so the face-detection
-        // hook always reads the correct canvas.width / canvas.height
-        const canvas = jerseyCanvasRef.current;
-        if (canvas) {
-          canvas.width  = w;
-          canvas.height = h;
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        if (!mounted) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
         }
-      });
-      obs.observe(el);
-      return () => obs.disconnect();
-    }, []);
 
-    // Draw jersey overlay on canvas
-    useEffect(() => {
-      const canvas = jerseyCanvasRef.current;
-      if (!canvas || canvasSize.w === 0) return;
+        streamRef.current = stream;
 
-      // Ensure intrinsic size is always current
-      canvas.width  = canvasSize.w;
-      canvas.height = canvasSize.h;
-
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      let running = true;
-
-      const drawFrame = () => {
-        if (!running) return;
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        if (jerseyImgRef.current && jerseyPosition) {
-          ctx.globalAlpha = jerseyPosition.opacity;
-
-        ctx.drawImage(
-          jerseyImgRef.current,
-          jerseyPosition.x,
-          jerseyPosition.y,
-          jerseyPosition.width,
-          jerseyPosition.height
-        );
-
-        ctx.globalAlpha = 1;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.onloadedmetadata = () => {
+            videoRef.current?.play();
+            if (mounted) setCameraState("active");
+          };
+        }
+      } catch (err) {
+        console.error("Camera error:", err);
+        if (mounted) setCameraState("error");
       }
+    }
 
-      animFrameRef.current = requestAnimationFrame(drawFrame);
+    startCamera();
+
+    return () => {
+      mounted = false;
+      streamRef.current?.getTracks().forEach((t) => t.stop());
     };
-      drawFrame();
+  }, []);
 
-      return () => {
-        running = false;
-        if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      };
-    }, [jerseyPosition, canvasSize]);
-    // Note: videoRef removed from deps – we never read videoRef inside this
-    // effect; it was a spurious dependency that caused extra redraws.
+  // ── Countdown → capture ───────────────────────────────────────────────────
+  const startCountdown = useCallback(() => {
+    if (cameraState !== "active") return;
+    setCameraState("countdown");
+    let count = 3;
+    setCountdown(count);
 
-    // Orientation check
-    useEffect(() => {
-      const check = () => setIsLandscape(window.innerWidth > window.innerHeight);
-      check();
-      window.addEventListener("resize", check);
-      return () => window.removeEventListener("resize", check);
-    }, []);
-
-    const startCountdown = useCallback(() => {
-      if (countdown !== null) return;
-      setCountdown(COUNTDOWN_SECONDS);
-    }, [countdown]);
-
-    // Countdown timer
-    useEffect(() => {
-      if (countdown === null) return;
-      if (countdown === 0) {
-        onCapture();
-        setCountdown(null);
-        return;
+    const interval = setInterval(() => {
+      count -= 1;
+      if (count > 0) {
+        setCountdown(count);
+      } else {
+        clearInterval(interval);
+        setCountdown(0);
+        doCapture();
       }
-      const t = setTimeout(() => setCountdown((c) => (c !== null ? c - 1 : null)), 1000);
-      return () => clearTimeout(t);
-    }, [countdown, onCapture]);
+    }, 1000);
+  }, [cameraState]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    return (
-      <div className="relative w-full h-dvh flex flex-col bg-gdg-dark overflow-hidden">
+  const doCapture = useCallback(() => {
+    setFlashActive(true);
+    setTimeout(() => setFlashActive(false), 300);
 
-        {/* Flash overlay */}
-        <AnimatePresence>
-          {showFlash && (
-            <motion.div
-              className="absolute inset-0 bg-white z-50 pointer-events-none"
-              initial={{ opacity: 1 }}
-              animate={{ opacity: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.35 }}
-            />
-          )}
-        </AnimatePresence>
+    const result = capturePhoto();
+    if (result) {
+      setCameraState("captured");
+      onCapture(result.dataUrl);
+    } else {
+      setCameraState("active");
+    }
+  }, [capturePhoto, onCapture]);
 
-        {/* Landscape warning */}
-        <AnimatePresence>
-          {isLandscapeWarning && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-gdg-dark/95 z-40 flex flex-col items-center justify-center gap-4 px-8 text-center"
-            >
-              <span className="text-5xl">📱</span>
-              <p className="font-display font-700 text-xl text-white">
-                Please rotate to portrait mode
-              </p>
-              <p className="text-white/50 text-sm">The photo booth works best in portrait orientation</p>
-            </motion.div>
-          )}
-        </AnimatePresence>
+  // ── Jersey overlay CSS ────────────────────────────────────────────────────
+  //
+  // The overlay sits on top of the video using absolute positioning.
+  // It is ALWAYS visible from the first frame — no waiting for face detection.
+  //
+  // Layout:
+  //   - width  = 92 vw (relative to the video container)
+  //   - left   = 50 %, transform: translateX(-50 %) → centred
+  //   - top    = 38 % → collar anchor for natural selfie alignment
+  //   - aspect ratio preserved (CSS `object-fit: contain`)
+  //
+  const jerseyStyle = useMemo<React.CSSProperties>(() => ({
+    position: "absolute",
+    width:    `${JERSEY_WIDTH_PCT * 100}%`,
+    left:     "50%",
+    top:      `${JERSEY_TOP_PCT * 100}%`,
+    transform: "translateX(-50%)",
+    pointerEvents: "none",
+    zIndex: 10,
+    opacity: jerseyLoaded ? 1 : 0,
+    transition: "opacity 0.2s ease",
+    // Preserve natural aspect ratio
+    height: "auto",
+  }), [jerseyLoaded]);
 
-        {/* Top HUD */}
-        <div className="absolute top-0 left-0 right-0 z-20 px-4 pt-safe-top pt-4 flex items-center justify-between">
-          <button
-            onClick={onBack}
-            className="w-10 h-10 rounded-xl bg-black/40 backdrop-blur-sm border border-white/10 flex items-center justify-center text-white/70 hover:text-white"
-          >
-            ←
-          </button>
+  // ── Face guide dot (optional UI feedback) ────────────────────────────────
+  const faceGuideStyle = useMemo<React.CSSProperties>(() => ({
+    position: "absolute",
+    // Face should be in upper third — show oval guide
+    left:   "50%",
+    top:    "12%",
+    width:  "42%",
+    height: "30%",
+    transform: "translateX(-50%)",
+    border: `2px dashed ${facePos.detected ? "rgba(66,133,244,0.7)" : "rgba(255,255,255,0.25)"}`,
+    borderRadius: "50%",
+    pointerEvents: "none",
+    zIndex: 9,
+    transition: "border-color 0.3s ease",
+  }), [facePos.detected]);
 
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/40 backdrop-blur-sm border border-white/10">
-            <GDGLogo size={18} />
-            <span className="font-display font-700 text-sm text-white">GDG Noida</span>
-          </div>
+  return (
+    <div className="camera-view" ref={containerRef}>
+      {/* ── Flash overlay ── */}
+      {flashActive && <div className="flash-overlay" />}
 
-          {/* Face indicator */}
-          <div
-            className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg border ${
-              faceCount > 0
-                ? "bg-gdg-green/20 border-gdg-green/40"
-                : "bg-black/40 border-white/10"
-            }`}
-          >
-            {faceCount > 0 ? "😊" : "🔍"}
-          </div>
-        </div>
+      {/* ── Camera container ── */}
+      <div className="camera-container">
 
-        {/* Camera feed container */}
-        <div
-          ref={containerRef}
-          className="relative flex-1 overflow-hidden"
-          style={{ background: "#000" }}
-        >
-          {/* ─── BUG FIX #7 ─────────────────────────────────────────────────────
-              The video is CSS-mirrored with scaleX(-1) which is correct for a
-              selfie view.  The jersey canvas must NOT be mirrored – it draws
-              the jersey with already-mirrored coordinates calculated in
-              useFaceDetection.  If the canvas were also mirrored the jersey
-              would appear on the wrong side.
-              ─────────────────────────────────────────────────────────────────── */}
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="absolute inset-0 w-full h-full object-cover"
-            style={{ transform: "scaleX(-1)" }}
-          />
+        {/* ── Video feed — always mirrored for selfie ── */}
+        <video
+          ref={videoRef}
+          className="camera-video"
+          autoPlay
+          playsInline
+          muted
+          // Mirror the video so it feels like a selfie mirror
+          style={{ transform: "scaleX(-1)" }}
+        />
 
-          {/* Jersey canvas — NOT mirrored */}
-          <canvas
-            ref={jerseyCanvasRef}
-            className="absolute inset-0 z-10 pointer-events-none"
-            style={{ width: "100%", height: "100%" }}
-          />
-
-          {/* Face guide circle – centred dynamically if face detected, else static */}
-          <div
-            className="absolute z-20 pointer-events-none"
-            style={
-              jerseyPosition
-                ? {
-                    // Place guide circle above the jersey, roughly at face height
-                    left: jerseyPosition.x + jerseyPosition.width  / 2,
-                    top:  jerseyPosition.y - jerseyPosition.height * 0.10,
-                    transform: "translate(-50%, -50%)",
-                    width:  jerseyPosition.width  * 0.38,
-                    height: jerseyPosition.width  * 0.38,
-                  }
-                : {
-                    left: "50%", top: "20%",
-                    transform: "translate(-50%, -50%)",
-                    width: 112, height: 112,
-                  }
+        {/* ── Jersey overlay — FIXED POSITION, always visible ── */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          ref={overlayImgRef}
+          src="/jersey-overlay.png"
+          alt="GDG Noida Jersey Overlay"
+          style={jerseyStyle}
+          onLoad={() => setJerseyLoaded(true)}
+          onError={() => {
+            // Fallback to the full jersey image if overlay fails
+            if (overlayImgRef.current) {
+              overlayImgRef.current.src = "/jersey.jpeg.png";
             }
-          >
-            <div
-              className="w-full h-full border-4 border-white rounded-full border-dashed animate-pulse"
-            />
+          }}
+          // Prevent any dragging / interaction
+          draggable={false}
+        />
+
+        {/* ── Face guide oval (UI hint only) ── */}
+        {cameraState === "active" && <div style={faceGuideStyle} />}
+
+        {/* ── Alignment guide text ── */}
+        {cameraState === "active" && (
+          <div className="alignment-hint">
+            {facePos.detected
+              ? "✓ Face detected — align your neck with the collar"
+              : "Place your face above the collar"}
           </div>
+        )}
 
-          {/* Shoulder guides */}
-          <div className="absolute inset-0 z-20 pointer-events-none">
-            <div className="absolute left-[10%] top-[30%] w-10 h-10 border-l-4 border-t-4 border-white rounded-tl-lg" />
-            <div className="absolute right-[10%] top-[30%] w-10 h-10 border-r-4 border-t-4 border-white rounded-tr-lg" />
+        {/* ── Countdown display ── */}
+        {cameraState === "countdown" && countdown > 0 && (
+          <div className="countdown-display">{countdown}</div>
+        )}
+
+        {/* ── Requesting camera ── */}
+        {cameraState === "requesting" && (
+          <div className="camera-status">
+            <div className="spinner" />
+            <p>Requesting camera access…</p>
           </div>
+        )}
 
-          {/* Viewfinder corners */}
-          <div className="absolute inset-6 pointer-events-none">
-            <div className="absolute top-0 left-0  w-8 h-8 border-t-2 border-l-2 border-gdg-blue  rounded-tl-lg" />
-            <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-gdg-red   rounded-tr-lg" />
-            <div className="absolute bottom-0 left-0  w-8 h-8 border-b-2 border-l-2 border-gdg-green  rounded-bl-lg" />
-            <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-gdg-yellow rounded-br-lg" />
-            <div className="scan-line" />
+        {/* ── Camera error ── */}
+        {cameraState === "error" && (
+          <div className="camera-status camera-error">
+            <p>📷 Camera not available</p>
+            <p className="error-detail">
+              Please allow camera access and reload the page.
+            </p>
+            <button onClick={onBack} className="back-btn">
+              ← Go Back
+            </button>
           </div>
-
-          {/* Face guide hint */}
-          <AnimatePresence>
-            {faceCount === 0 && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute inset-x-0 top-1/4 flex justify-center pointer-events-none"
-              >
-                <div className="px-4 py-2 rounded-full bg-black/50 backdrop-blur-sm border border-white/10">
-                  <p className="text-white/70 text-xs font-body">
-                    👕 Align your face and shoulders with the guide
-                  </p>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Countdown */}
-          <AnimatePresence>
-            {countdown !== null && countdown > 0 && (
-              <motion.div
-                key={countdown}
-                className="absolute inset-0 flex items-center justify-center pointer-events-none"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.1 }}
-              >
-                <div className="countdown-num">{countdown}</div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Bottom controls */}
-        <div className="relative z-20 px-6 py-5 safe-bottom flex flex-col items-center gap-4 bg-gradient-to-t from-gdg-dark to-transparent">
-          <div className="flex items-center gap-2 text-xs text-white/40 font-body tracking-widest">
-            <span className="text-gdg-blue">●</span> LEARN
-            <span className="text-gdg-yellow">●</span> BUILD
-            <span className="text-gdg-green">●</span> CONNECT
-          </div>
-
-          <button
-            onClick={startCountdown}
-            disabled={isCapturing || countdown !== null}
-            className="relative w-20 h-20 rounded-full flex items-center justify-center"
-            style={{
-              background: "white",
-              boxShadow: countdown !== null
-                ? "0 0 40px rgba(66,133,244,0.8), 0 0 80px rgba(66,133,244,0.4)"
-                : "0 0 30px rgba(255,255,255,0.3)",
-            }}
-          >
-            <div
-              className="absolute inset-[-5px] rounded-full border-[3px]"
-              style={{
-                borderRadius: "50%",
-                border: "3px solid transparent",
-                background:
-                  "linear-gradient(#0A0A0F, #0A0A0F) padding-box, linear-gradient(135deg, #4285F4, #EA4335, #FBBC04, #34A853) border-box",
-              }}
-            />
-            {isCapturing ? (
-              <div className="w-6 h-6 border-2 border-gdg-blue border-t-transparent rounded-full animate-spin" />
-            ) : countdown !== null ? (
-              <span className="text-gdg-blue font-display font-900 text-2xl">{countdown}</span>
-            ) : (
-              <span className="text-2xl">📸</span>
-            )}
-          </button>
-
-          <p className="text-white/30 text-[11px] font-body">
-            {countdown !== null ? "Get ready!" : "Tap to take selfie"}
-          </p>
-        </div>
+        )}
       </div>
-    );
-  }
-);
+
+      {/* ── Controls ── */}
+      <div className="camera-controls">
+        <button
+          className="control-btn back-control"
+          onClick={onBack}
+          disabled={cameraState === "countdown"}
+        >
+          ← Back
+        </button>
+
+        <button
+          className="shutter-btn"
+          onClick={startCountdown}
+          disabled={cameraState !== "active"}
+        >
+          {cameraState === "countdown" ? `${countdown}` : "📸"}
+        </button>
+
+        <div className="control-spacer" />
+      </div>
+    </div>
+  );
+};
+
+export default CameraView;

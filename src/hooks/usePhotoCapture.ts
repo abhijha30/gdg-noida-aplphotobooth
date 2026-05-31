@@ -1,216 +1,109 @@
-"use client";
+import { useCallback, useRef } from "react";
 
-import { useCallback, useRef, useState } from "react";
-import { JerseyPosition } from "./useFaceDetection";
+export interface JerseyLayout {
+  x: number;       // px from left on the OUTPUT canvas
+  y: number;       // px from top on the OUTPUT canvas
+  width: number;   // px
+  height: number;  // px
+}
 
-export interface CapturedPhoto {
+export interface CaptureResult {
   dataUrl: string;
-  timestamp: number;
+  width: number;
+  height: number;
 }
 
-interface UsePhotoCaptureReturn {
-  capturedPhoto: CapturedPhoto | null;
-  isCapturing: boolean;
-  capturePhoto: (
-    video: HTMLVideoElement,
-    jerseyImg: HTMLImageElement | null,
-    jerseyPosition: JerseyPosition | null
-  ) => Promise<void>;
-  downloadPhoto: () => void;
-  shareToInstagram: () => void;
-  resetPhoto: () => void;
+/**
+ * Computes the jersey layout for a given canvas size.
+ *
+ * Rules (mirroring CameraView's CSS overlay):
+ *  - Jersey width = 92% of canvas width (matching CSS overlay width)
+ *  - Aspect ratio preserved from the PNG (jerseyNatW / jerseyNatH)
+ *  - Horizontally centred
+ *  - Vertically: collar top sits at ~38% of canvas height
+ *    so a user's neck lands in the collar during a selfie held at arm-length.
+ */
+export function computeJerseyLayout(
+  canvasW: number,
+  canvasH: number,
+  jerseyNatW: number,
+  jerseyNatH: number
+): JerseyLayout {
+  const jerseyW = canvasW * 0.92;
+  const jerseyH = jerseyW * (jerseyNatH / jerseyNatW);
+  const jerseyX = (canvasW - jerseyW) / 2;
+  // Collar top at 38% of canvas height
+  const jerseyY = canvasH * 0.38;
+  return { x: jerseyX, y: jerseyY, width: jerseyW, height: jerseyH };
 }
 
-const GDG_COLORS = ["#4285F4", "#EA4335", "#FBBC04", "#34A853"];
-
-function drawBrandingOverlay(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number
+export function usePhotoCapture(
+  videoRef: React.RefObject<HTMLVideoElement>,
+  overlayImageRef: React.RefObject<HTMLImageElement>
 ) {
-  // Top gradient bar
-  const topGrad = ctx.createLinearGradient(0, 0, width, 0);
-  topGrad.addColorStop(0,    "rgba(66,133,244,0.9)");
-  topGrad.addColorStop(0.33, "rgba(234,67,53,0.9)");
-  topGrad.addColorStop(0.66, "rgba(251,188,4,0.9)");
-  topGrad.addColorStop(1,    "rgba(52,168,83,0.9)");
-  ctx.fillStyle = topGrad;
-  ctx.fillRect(0, 0, width, 6);
+  const captureCanvas = useRef<HTMLCanvasElement | null>(null);
 
-  // Bottom branding panel
-  const panelH = Math.round(height * 0.13);
-  const panelGrad = ctx.createLinearGradient(0, height - panelH, 0, height);
-  panelGrad.addColorStop(0,   "rgba(10,10,15,0)");
-  panelGrad.addColorStop(0.3, "rgba(10,10,15,0.85)");
-  panelGrad.addColorStop(1,   "rgba(10,10,15,0.97)");
-  ctx.fillStyle = panelGrad;
-  ctx.fillRect(0, height - panelH, width, panelH);
+  const capturePhoto = useCallback((): CaptureResult | null => {
+    const video = videoRef.current;
+    const jerseyImg = overlayImageRef.current;
+    if (!video || !jerseyImg) return null;
 
-  // Bottom colour bar
-  ctx.fillStyle = topGrad;
-  ctx.fillRect(0, height - 6, width, 6);
+    // Output canvas: 9:16 portrait
+    const OUTPUT_W = 1080;
+    const OUTPUT_H = 1920;
 
-  // GDG Noida text
-  const fontSize = Math.round(width * 0.065);
-  ctx.font = `900 ${fontSize}px 'Exo 2', sans-serif`;
-  ctx.textAlign    = "left";
-  ctx.textBaseline = "bottom";
-  ctx.fillStyle    = "white";
-  ctx.shadowColor  = "rgba(66,133,244,0.8)";
-  ctx.shadowBlur   = 15;
-  ctx.fillText("GDG Noida", Math.round(width * 0.05), height - Math.round(panelH * 0.42));
-  ctx.shadowBlur = 0;
+    if (!captureCanvas.current) {
+      captureCanvas.current = document.createElement("canvas");
+    }
+    const canvas = captureCanvas.current;
+    canvas.width = OUTPUT_W;
+    canvas.height = OUTPUT_H;
 
-  // Tagline
-  const tagSize = Math.round(fontSize * 0.38);
-  ctx.font      = `500 ${tagSize}px 'DM Sans', sans-serif`;
-  ctx.fillStyle = "rgba(255,255,255,0.7)";
-  ctx.fillText("LEARN  •  BUILD  •  CONNECT", Math.round(width * 0.05), height - Math.round(panelH * 0.12));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
 
-  // Hashtag on right
-  const tagFontSize = Math.round(fontSize * 0.5);
-  ctx.font      = `700 ${tagFontSize}px 'Exo 2', sans-serif`;
-  ctx.textAlign = "right";
-  ctx.fillStyle = "#4285F4";
-  ctx.fillText("#IAmGDGNoida", width - Math.round(width * 0.04), height - Math.round(panelH * 0.42));
+    // ── 1. Black background ──────────────────────────────────────────────
+    ctx.fillStyle = "#0A0A0F";
+    ctx.fillRect(0, 0, OUTPUT_W, OUTPUT_H);
 
-  ctx.font      = `400 ${Math.round(tagFontSize * 0.75)}px 'DM Sans', sans-serif`;
-  ctx.fillStyle = "rgba(255,255,255,0.5)";
-  ctx.fillText("@gdgnoida", width - Math.round(width * 0.04), height - Math.round(panelH * 0.12));
+    // ── 2. Draw mirrored video feed (selfie = front camera = mirrored) ──
+    // Scale video to fill 9:16, cropping sides if needed (object-fit: cover)
+    const vidW = video.videoWidth || 640;
+    const vidH = video.videoHeight || 480;
 
-  // Corner GDG logo dots
-  const dotR   = Math.round(width * 0.016);
-  const startX = Math.round(width * 0.05);
-  const dotY   = Math.round(height * 0.05);
-  const gap    = dotR * 2.5;
-  GDG_COLORS.forEach((color, i) => {
-    ctx.beginPath();
-    ctx.arc(startX + i * gap, dotY, dotR, 0, Math.PI * 2);
-    ctx.fillStyle   = color;
-    ctx.shadowColor = color;
-    ctx.shadowBlur  = 10;
-    ctx.fill();
-    ctx.shadowBlur  = 0;
-  });
-}
+    ctx.save();
+    // Mirror horizontally (front-facing camera)
+    ctx.translate(OUTPUT_W, 0);
+    ctx.scale(-1, 1);
 
-export function usePhotoCapture(): UsePhotoCaptureReturn {
-  const [capturedPhoto, setCapturedPhoto] = useState<CapturedPhoto | null>(null);
-  const [isCapturing,   setIsCapturing]   = useState(false);
+    const vidAspect = vidW / vidH;
+    const outAspect = OUTPUT_W / OUTPUT_H;
 
-  const capturePhoto = useCallback(
-    async (
-      video: HTMLVideoElement,
-      jerseyImg: HTMLImageElement | null,
-      jerseyPosition: JerseyPosition | null
-    ) => {
-      setIsCapturing(true);
+    let sx = 0, sy = 0, sw = vidW, sh = vidH;
+    if (vidAspect > outAspect) {
+      // video is wider — crop sides
+      sw = vidH * outAspect;
+      sx = (vidW - sw) / 2;
+    } else {
+      // video is taller — crop top/bottom
+      sh = vidW / outAspect;
+      sy = (vidH - sh) / 2;
+    }
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, OUTPUT_W, OUTPUT_H);
+    ctx.restore();
 
-      try {
-        const vw = video.videoWidth  || 640;
-        const vh = video.videoHeight || 480;
+    // ── 3. Draw jersey overlay at FIXED position ─────────────────────────
+    const layout = computeJerseyLayout(
+      OUTPUT_W,
+      OUTPUT_H,
+      jerseyImg.naturalWidth || jerseyImg.width,
+      jerseyImg.naturalHeight || jerseyImg.height
+    );
+    ctx.drawImage(jerseyImg, layout.x, layout.y, layout.width, layout.height);
 
-        const canvas = document.createElement("canvas");
-        canvas.width  = vw;
-        canvas.height = vh;
-        const ctx = canvas.getContext("2d")!;
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
+    return { dataUrl, width: OUTPUT_W, height: OUTPUT_H };
+  }, [videoRef, overlayImageRef]);
 
-        // ── Step 1: draw the mirrored video frame ──────────────────────────────
-        ctx.save();
-        ctx.translate(vw, 0);
-        ctx.scale(-1, 1);
-        ctx.drawImage(video, 0, 0, vw, vh);
-        ctx.restore();
-
-        // ── Step 2: draw the jersey at the SAME visual position as preview ─────
-        if (jerseyImg && jerseyPosition) {
-          // ─── BUG FIX #5 (THE MAIN CAPTURE BUG) ──────────────────────────────
-          //
-          // jerseyPosition.{x,y,width,height} are in *display-canvas* pixels
-          // (the size of the overlay canvas shown in the browser, e.g. 390×700).
-          //
-          // The capture canvas is in *video* pixels (e.g. 1280×720).
-          //
-          // The old code did:
-          //   mirroredX = vw - jerseyPosition.x - jerseyPosition.width
-          // which re-mirrors an already-mirrored x value and uses display-pixel
-          // coords directly on a video-resolution canvas → completely wrong.
-          //
-          // The fix: scale the display-canvas coords to video-canvas coords using
-          // the ratio stored in jerseyPosition.canvasW / canvasH.
-          // The jersey x is already in mirrored (display) space; we just need to
-          // rescale it, NOT re-mirror it again.
-          // ─────────────────────────────────────────────────────────────────────
-
-          const scaleX = vw / (jerseyPosition.canvasW || vw);
-          const scaleY = vh / (jerseyPosition.canvasH || vh);
-
-          // Use the average scale to keep the jersey proportional
-          const scale = (scaleX + scaleY) / 2;
-
-          const jx = jerseyPosition.x      * scaleX;
-          const jy = jerseyPosition.y      * scaleY;
-          const jw = jerseyPosition.width  * scale;
-          const jh = jerseyPosition.height * scale;
-
-          ctx.globalAlpha = jerseyPosition.opacity;
-          ctx.drawImage(jerseyImg, jx, jy, jw, jh);
-          ctx.globalAlpha = 1;
-
-        } else if (jerseyImg) {
-          // Fallback: centre jersey if no face detected
-          const jw = vw * 0.78;
-          const jh = jw * 1.35;
-          const jx = (vw - jw) / 2;
-          const jy = vh * 0.28;
-          ctx.globalAlpha = 0.92;
-          ctx.drawImage(jerseyImg, jx, jy, jw, jh);
-          ctx.globalAlpha = 1;
-        }
-
-        // ── Step 3: branding overlay ───────────────────────────────────────────
-        drawBrandingOverlay(ctx, vw, vh);
-
-        const dataUrl = canvas.toDataURL("image/png", 0.95);
-        setCapturedPhoto({ dataUrl, timestamp: Date.now() });
-      } finally {
-        setIsCapturing(false);
-      }
-    },
-    []
-  );
-
-  const downloadPhoto = useCallback(() => {
-    if (!capturedPhoto) return;
-    const link = document.createElement("a");
-    link.href      = capturedPhoto.dataUrl;
-    link.download  = `GDGNoida-${capturedPhoto.timestamp}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }, [capturedPhoto]);
-
-  const shareToInstagram = useCallback(() => {
-    if (!capturedPhoto) return;
-    downloadPhoto();
-    setTimeout(() => {
-      window.location.href = "instagram://story-camera";
-      setTimeout(() => {
-        window.open("https://www.instagram.com", "_blank");
-      }, 1500);
-    }, 500);
-  }, [capturedPhoto, downloadPhoto]);
-
-  const resetPhoto = useCallback(() => {
-    setCapturedPhoto(null);
-  }, []);
-
-  return {
-    capturedPhoto,
-    isCapturing,
-    capturePhoto,
-    downloadPhoto,
-    shareToInstagram,
-    resetPhoto,
-  };
+  return { capturePhoto };
 }
