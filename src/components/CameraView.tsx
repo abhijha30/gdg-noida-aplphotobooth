@@ -237,8 +237,8 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
 
         {/* Shoulder Guide */}
         <div className="absolute inset-0 z-20 pointer-events-none">
-          <div className="absolute left-[12%] top-[33%] w-10 h-10 border-l-4 border-t-4 border-white rounded-tl-lg" />
-        <div className="absolute right-[12%] top-[33%] w-10 h-10 border-r-4 border-t-4 border-white rounded-tr-lg" />
+          <div className="absolute left-[10%] top-[30%] w-10 h-10 border-l-4 border-t-4 border-white rounded-tl-lg" />
+        <div className="absolute right-[10%] top-[30%] w-10 h-10 border-r-4 border-t-4 border-white rounded-tr-lg" />
         </div>
 
           {/* Viewfinder corners */}
@@ -266,7 +266,7 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
               >
                 <div className="px-4 py-2 rounded-full bg-black/50 backdrop-blur-sm border border-white/10">
                   <p className="text-white/70 text-xs font-body">
-                    👕 Place your face inside the collar
+                    👕 Align your face and shoulders with the guide
                   </p>
                 </div>
               </motion.div>
