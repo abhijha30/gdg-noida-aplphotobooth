@@ -24,17 +24,15 @@ export function WelcomeScreen({ onStart, participantCount }: WelcomeScreenProps)
 
       {/* Top section */}
       <div className="w-full flex flex-col items-center gap-6 mt-4">
-        <motion.div {...fadeUp(0)} className="flex items-center gap-3">
-          <GDGLogo size={52} className="drop-shadow-[0_0_20px_rgba(66,133,244,0.7)]" />
-          <div>
-            <p className="text-xs font-mono text-gdg-blue tracking-[0.2em] uppercase">
-              Google Developer Groups
-            </p>
-            <h1 className="text-2xl font-display font-900 text-white leading-tight">
-              GDG Noida
-            </h1>
-          </div>
-        </motion.div>
+        <motion.div
+          {...fadeUp(0)}
+          className="flex justify-center w-full"
+        >
+          <GDGLogo
+          size={260}
+          className="object-contain"
+        />
+      </motion.div>
 
         <GDGColorBar className="w-24" />
       </div>
@@ -52,7 +50,7 @@ export function WelcomeScreen({ onStart, participantCount }: WelcomeScreenProps)
               style={{ animationDelay: "0.5s" }}
             />
             <img
-              src="//jersey.jpeg.png"
+              src="/jersey.jpeg.png"
               alt="GDG Noida Jersey"
               className="absolute inset-0 w-full h-full object-contain rounded-2xl p-3 animate-float"
             />
