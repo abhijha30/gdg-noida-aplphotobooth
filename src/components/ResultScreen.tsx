@@ -21,13 +21,11 @@ const ResultScreen: React.FC<ResultScreenProps> = ({
   const handleShare = useCallback(async () => {
     if (navigator.share) {
       try {
-        // Convert dataURL → Blob → File for Web Share API
-        const res   = await fetch(photoUrl);
-        const blob  = await res.blob();
-        const file  = new File([blob], "gdg-noida-selfie.jpg", {
+        const res  = await fetch(photoUrl);
+        const blob = await res.blob();
+        const file = new File([blob], "gdg-noida-selfie.jpg", {
           type: "image/jpeg",
         });
-
         await navigator.share({
           title: "I Am GDG Noida 🎽",
           text: "#IAmGDGNoida #GDGNoida — Take your jersey selfie!",
