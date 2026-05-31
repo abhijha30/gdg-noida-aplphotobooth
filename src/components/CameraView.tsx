@@ -108,6 +108,7 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
 
       const drawFrame = () => {
         if (!running) return;
+        
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         if (jerseyImgRef.current) {
@@ -128,7 +129,7 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
           }
           
           animFrameRef.current = requestAnimationFrame(drawFrame);
-      };
+        };
       drawFrame();
 
       return () => {
