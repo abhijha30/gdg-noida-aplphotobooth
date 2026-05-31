@@ -92,10 +92,11 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
             const cw = canvas.width;
             const ch = canvas.height;
 
-            const drawX = cw * 0.02;
-            const drawY = ch * 0.15;
-            const drawW = cw * 0.96;
-            const drawH = ch * 0.82;
+            const drawW = cw * 0.95;
+            const drawH = drawW * 1.15;
+
+            const drawX = (cw - drawW) / 2;
+            const drawY = ch * 0.16;
 
             ctx.drawImage(
               jerseyImgRef.current,
