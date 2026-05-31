@@ -53,7 +53,7 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
     useEffect(() => {
       const img = new Image();
       img.crossOrigin = "anonymous";
-      img.src = "/gdg-overlay-v2.png";
+      img.src = "/gdg-overlay-v2.PNG";
       img.onload = () => { jerseyImgRef.current = img; };
     }, []);
 
