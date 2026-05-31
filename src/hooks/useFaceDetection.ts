@@ -27,7 +27,7 @@ interface UseFaceDetectionReturn {
 }
 
 // Faster tracking
-const LERP = 0.35;
+const LERP = 0.25;
 
 let faceDetectionModule: typeof import("@mediapipe/face_detection") | null = null;
 
@@ -93,17 +93,21 @@ export function useFaceDetection(): UseFaceDetectionReturn {
           const faceW = bbox.width * cw;
           const faceH = bbox.height * ch;
 
-          // SMART JERSEY FITTING
-          const faceSize = Math.max(faceW, faceH);
+         // BETTER BODY FITTING
 
-          const jerseyWidth = faceSize * 4.0;
-          const jerseyHeight = jerseyWidth * 1.38;
+        const faceSize = Math.max(faceW, faceH);
 
-          const jerseyX =
-            faceX + faceW / 2 - jerseyWidth / 2;
+        // Scale automatically according to distance
+        const jerseyWidth = faceSize * 3.2;
+        const jerseyHeight = jerseyWidth * 1.35;
 
-          const jerseyY =
-            faceY + faceH * 0.50;
+        // Center jersey on face
+        const jerseyX =
+          faceX + (faceW / 2) - (jerseyWidth / 2);
+
+        // Move jersey BELOW chin
+        const jerseyY =
+          faceY + (faceH * 0.95);
 
           const target: JerseyPosition = {
             x: jerseyX,

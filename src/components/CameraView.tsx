@@ -53,7 +53,7 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
     useEffect(() => {
       const img = new Image();
       img.crossOrigin = "anonymous";
-      img.src = "/jersey.jpeg";
+      img.src = "/jersey.jpeg.png";
       img.onload = () => {
         jerseyImgRef.current = img;
       };
@@ -83,47 +83,30 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
       const drawFrame = () => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        if (jerseyImgRef.current && jerseyPosition && jerseyPosition.opacity > 0.01) {
-          // Video is CSS-mirrored, so canvas coords match what user sees
-          ctx.globalAlpha = Math.min(jerseyPosition.opacity, 0.92);
+        if (jerseyImgRef.current) {
+          ctx.globalAlpha = 0.92;
 
-          // Scale position from video coords to canvas display coords
           const video = videoRef.current;
+
           if (video && video.videoWidth && video.videoHeight) {
-            const vw = video.videoWidth;
-            const vh = video.videoHeight;
             const cw = canvas.width;
             const ch = canvas.height;
 
-            // Letterbox/cover scaling
-            const videoAspect = vw / vh;
-            const canvasAspect = cw / ch;
+            const drawW = cw * 0.95;
+            const drawH = drawW * 1.15;
 
-            let scaleX: number, scaleY: number, offsetX: number, offsetY: number;
+            const drawX = (cw - drawW) / 2;
+            const drawY = ch * 0.16;
 
-            if (canvasAspect > videoAspect) {
-              // Canvas wider → video covers height
-              scaleY = ch / vh;
-              scaleX = scaleY;
-              offsetX = (cw - vw * scaleX) / 2;
-              offsetY = 0;
-            } else {
-              // Canvas taller → video covers width
-              scaleX = cw / vw;
-              scaleY = scaleX;
-              offsetX = 0;
-              offsetY = (ch - vh * scaleY) / 2;
-            }
-
-            // Mirror X (because video is CSS mirrored)
-            const mirroredX = vw - jerseyPosition.x - jerseyPosition.width;
-            const drawX = mirroredX * scaleX + offsetX;
-            const drawY = jerseyPosition.y * scaleY + offsetY;
-            const drawW = jerseyPosition.width * scaleX;
-            const drawH = jerseyPosition.height * scaleY;
-
-            ctx.drawImage(jerseyImgRef.current, drawX, drawY, drawW, drawH);
+            ctx.drawImage(
+              jerseyImgRef.current,
+              drawX,
+              drawY,
+              drawW,
+              drawH
+            );
           }
+
           ctx.globalAlpha = 1;
         }
 
@@ -238,12 +221,25 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
             style={{ transform: "scaleX(-1)" }}
           />
 
-          {/* Jersey overlay canvas */}
-          <canvas
+         <canvas
             ref={jerseyCanvasRef}
-            className="canvas-overlay"
-            style={{ width: "100%", height: "100%" }}
-          />
+            className="absolute inset-0 z-10 pointer-events-none"
+            style={{
+            width: "100%",
+            height: "100%",
+          }}
+        />
+
+        {/* Collar Guide */}
+        <div className="absolute left-1/2 top-[18%] -translate-x-1/2 z-20 pointer-events-none">
+          <div className="w-28 h-28 border-4 border-white rounded-full border-dashed animate-pulse" />
+        </div>
+
+        {/* Shoulder Guide */}
+        <div className="absolute inset-0 z-20 pointer-events-none">
+          <div className="absolute left-[12%] top-[33%] w-10 h-10 border-l-4 border-t-4 border-white rounded-tl-lg" />
+        <div className="absolute right-[12%] top-[33%] w-10 h-10 border-r-4 border-t-4 border-white rounded-tr-lg" />
+        </div>
 
           {/* Viewfinder corners */}
           <div className="absolute inset-6 pointer-events-none">
@@ -270,7 +266,7 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
               >
                 <div className="px-4 py-2 rounded-full bg-black/50 backdrop-blur-sm border border-white/10">
                   <p className="text-white/70 text-xs font-body">
-                    📍 Position your face in frame
+                    👕 Place your face inside the collar
                   </p>
                 </div>
               </motion.div>
