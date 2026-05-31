@@ -27,7 +27,7 @@ interface UseFaceDetectionReturn {
 }
 
 // Faster tracking
-const LERP = 0.35;
+const LERP = 0.25;
 
 let faceDetectionModule: typeof import("@mediapipe/face_detection") | null = null;
 
