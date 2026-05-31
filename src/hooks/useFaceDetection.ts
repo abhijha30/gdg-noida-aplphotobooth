@@ -120,24 +120,21 @@ export function useFaceDetection(): UseFaceDetectionReturn {
           const mirroredFaceCenterX = cw - (rawFaceX + faceW / 2);
           // ─────────────────────────────────────────────────────────────────────
 
-          const faceSize = Math.max(faceW, faceH);
+        const faceSize = Math.max(faceW, faceH);
 
-          // Jersey width = ~3x face size; aspect ratio of the actual jersey PNG
-          const jerseyWidth  = faceSize * 3.2;
-          const jerseyHeight = jerseyWidth * 1.35;
+        // Wider shoulders
+        const jerseyWidth = faceSize * 4.6;
 
-          // Horizontally centre jersey on the (mirrored) face centre
-          const jerseyX = mirroredFaceCenterX - jerseyWidth / 2;
+        // Cropped jersey = shorter height
+        const jerseyHeight = jerseyWidth * 0.72;
 
-          // ─── BUG FIX #3 ──────────────────────────────────────────────────────
-          // The collar of the jersey image sits at roughly the top 8% of the PNG.
-          // We want the collar opening to align just below the chin (faceY + faceH).
-          // So the top of the jersey PNG = chin position − collar-top offset
-          // collar offset ≈ jerseyHeight * 0.08  (tune this constant to taste)
-          const COLLAR_OFFSET = jerseyHeight * 0.08;
-          const jerseyY = faceY + faceH * 0.90 - COLLAR_OFFSET;
-          // ─────────────────────────────────────────────────────────────────────
+        // Center on face
+        const jerseyX =
+          mirroredFaceCenterX - jerseyWidth / 2;
 
+        // Collar should sit around neck
+        const jerseyY =
+          faceY + faceH * 0.55;
           const target: JerseyPosition = {
             x: jerseyX,
             y: jerseyY,
@@ -204,7 +201,7 @@ export function useFaceDetection(): UseFaceDetectionReturn {
         const cw = canvas.width  || 390;
         const ch = canvas.height || 700;
         const jw = cw * 0.82;
-        const jh = jw * 1.35;
+        const jh = jw * 0.72;
         const fallback: JerseyPosition = {
           x:       (cw - jw) / 2,
           y:       ch * 0.30,
