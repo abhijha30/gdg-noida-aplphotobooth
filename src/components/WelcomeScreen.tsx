@@ -52,7 +52,7 @@ export function WelcomeScreen({ onStart, participantCount }: WelcomeScreenProps)
               style={{ animationDelay: "0.5s" }}
             />
             <img
-              src="/jersey.jpeg"
+              src="//jersey.jpeg.png"
               alt="GDG Noida Jersey"
               className="absolute inset-0 w-full h-full object-contain rounded-2xl p-3 animate-float"
             />
