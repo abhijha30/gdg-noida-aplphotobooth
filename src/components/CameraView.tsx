@@ -125,14 +125,15 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
             const drawX = (cw - drawW) / 2;
             const drawY = ch * 0.16;
 
-            ctx.drawImage(
-              jerseyImgRef.current,
-              drawX,
-              drawY,
-              drawW,
-              drawH
-            );
-          }
+            if (jerseyPosition) {
+              ctx.drawImage(
+                jerseyImgRef.current,
+                jerseyPosition.x,
+                jerseyPosition.y,
+                jerseyPosition.width,
+                jerseyPosition.height
+              );
+            }
 
           ctx.globalAlpha = 1;
         }
