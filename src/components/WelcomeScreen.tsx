@@ -24,13 +24,15 @@ export function WelcomeScreen({ onStart, participantCount }: WelcomeScreenProps)
 
       {/* Top section */}
       <div className="w-full flex flex-col items-center gap-6 mt-4">
-        <motion.div {...fadeUp(0)}>
-          <img
-            src="/gdg-noida-logo.png"
-            alt="GDG Noida"
-            className="w-[280px] md:w-[340px] h-auto"
-          />
-        </motion.div>
+        <motion.div
+          {...fadeUp(0)}
+          className="flex justify-center w-full"
+        >
+          <GDGLogo
+          size={260}
+          className="object-contain"
+        />
+      </motion.div>
 
         <GDGColorBar className="w-24" />
       </div>
@@ -48,7 +50,7 @@ export function WelcomeScreen({ onStart, participantCount }: WelcomeScreenProps)
               style={{ animationDelay: "0.5s" }}
             />
             <img
-              src="//jersey.jpeg.png"
+              src="/jersey.jpeg.png"
               alt="GDG Noida Jersey"
               className="absolute inset-0 w-full h-full object-contain rounded-2xl p-3 animate-float"
             />
