@@ -24,67 +24,116 @@ const JERSEY_TOP_PCT    = 0.38;   // collar top at 38 % from top
 interface CameraViewProps {
   onCapture: (dataUrl: string) => void;
   onBack: () => void;
+  isCapturing: boolean;
 }
 
-type CameraState = "requesting" | "active" | "error" | "countdown" | "captured";
+export interface CameraViewHandle {
+  triggerFlash: () => void;
+}
 
-const CameraView: React.FC<CameraViewProps> = ({ onCapture, onBack }) => {
-  const videoRef        = useRef<HTMLVideoElement>(null);
-  const containerRef    = useRef<HTMLDivElement>(null);
-  const overlayImgRef   = useRef<HTMLImageElement>(null);
-  const streamRef       = useRef<MediaStream | null>(null);
+const COUNTDOWN_SECONDS = 3;
 
-  const [cameraState, setCameraState] = useState<CameraState>("requesting");
-  const [countdown, setCountdown]      = useState(0);
-  const [flashActive, setFlashActive]  = useState(false);
-  const [jerseyLoaded, setJerseyLoaded] = useState(false);
+export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
+  function CameraView(
+    { videoRef, jerseyPosition, faceCount, onCapture, onBack, isCapturing },
+    ref
+  ) {
+    const containerRef    = useRef<HTMLDivElement>(null);
+    const jerseyCanvasRef = useRef<HTMLCanvasElement>(null);
+    const jerseyImgRef    = useRef<HTMLImageElement | null>(null);
+    const animFrameRef    = useRef<number | null>(null);
 
-  // Face detection — UI guidance only, NOT used for positioning
-  const facePos = useFaceDetection(videoRef);
+    const [countdown, setCountdown]             = useState<number | null>(null);
+    const [showFlash, setShowFlash]             = useState(false);
+    const [isLandscapeWarning, setIsLandscape]  = useState(false);
+    const [canvasSize, setCanvasSize]           = useState({ w: 0, h: 0 });
 
-  // Photo capture hook
-  const { capturePhoto } = usePhotoCapture(videoRef, overlayImgRef);
+    useImperativeHandle(ref, () => ({
+      triggerFlash: () => {
+        setShowFlash(true);
+        setTimeout(() => setShowFlash(false), 400);
+      },
+    }));
 
-  // ── Start camera ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    let mounted = true;
+    // Load jersey image once
+    useEffect(() => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = "/gdg-overlay-v2.png";
+      img.onload = () => { jerseyImgRef.current = img; };
+    }, []);
 
-    async function startCamera() {
-      try {
-        // Prefer environment-facing on mobile; fall back to user (front) camera
-        // For a selfie photobooth we actually want the FRONT camera
-        const constraints: MediaStreamConstraints = {
-          video: {
-            facingMode: "user",
-            width:  { ideal: 1080 },
-            height: { ideal: 1920 },
-            aspectRatio: { ideal: 9 / 16 },
-          },
-          audio: false,
-        };
+    // ─── BUG FIX #6 ──────────────────────────────────────────────────────────
+    // The ResizeObserver must update canvas.width and canvas.height (the
+    // *intrinsic* canvas resolution) to match the displayed pixel size.
+    // Previously this was done via state, then applied in the draw useEffect.
+    // However, changing canvas.width/height inside a draw loop resets the
+    // context state (clears the canvas, loses transforms).  More importantly,
+    // the canvas element itself needs its width/height attributes set to the
+    // display size so that 1 canvas pixel == 1 CSS pixel, otherwise MediaPipe
+    // coordinates (which are normalised to the video then mapped to the canvas)
+    // won't align with what is drawn.
+    //
+    // We keep state as the trigger for re-rendering but apply the dimensions
+    // directly to the canvas element in the draw effect, which is correct.
+    // ─────────────────────────────────────────────────────────────────────────
+    useEffect(() => {
+      const el = containerRef.current;
+      if (!el) return;
+      const obs = new ResizeObserver((entries) => {
+        const { width, height } = entries[0].contentRect;
+        const w = Math.round(width);
+        const h = Math.round(height);
+        setCanvasSize({ w, h });
 
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
-        if (!mounted) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
+        // Also set canvas intrinsic size immediately so the face-detection
+        // hook always reads the correct canvas.width / canvas.height
+        const canvas = jerseyCanvasRef.current;
+        if (canvas) {
+          canvas.width  = w;
+          canvas.height = h;
         }
+      });
+      obs.observe(el);
+      return () => obs.disconnect();
+    }, []);
 
-        streamRef.current = stream;
+    // Draw jersey overlay on canvas
+    useEffect(() => {
+      const canvas = jerseyCanvasRef.current;
+      if (!canvas || canvasSize.w === 0) return;
 
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.onloadedmetadata = () => {
-            videoRef.current?.play();
-            if (mounted) setCameraState("active");
-          };
-        }
-      } catch (err) {
-        console.error("Camera error:", err);
-        if (mounted) setCameraState("error");
+      // Ensure intrinsic size is always current
+      canvas.width  = canvasSize.w;
+      canvas.height = canvasSize.h;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      let running = true;
+
+      const drawFrame = () => {
+        if (!running) return;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (jerseyImgRef.current && jerseyPosition) {
+          ctx.globalAlpha = jerseyPosition.opacity;
+
+        ctx.drawImage(
+          jerseyImgRef.current,
+          jerseyPosition.x,
+          jerseyPosition.y,
+          jerseyPosition.width,
+          jerseyPosition.height
+        );
+
+        ctx.globalAlpha = 1;
       }
-    }
 
-    startCamera();
+      animFrameRef.current = requestAnimationFrame(drawFrame);
+    };
+      drawFrame();
 
     return () => {
       mounted = false;
