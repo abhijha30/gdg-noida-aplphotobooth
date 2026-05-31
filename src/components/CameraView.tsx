@@ -108,34 +108,22 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
 
       const drawFrame = () => {
         if (!running) return;
+
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        if (jerseyImgRef.current) {
-          ctx.globalAlpha = 0.92;
+        if (jerseyImgRef.current && jerseyPosition) {
+          ctx.globalAlpha = jerseyPosition.opacity;
 
-          const video = videoRef.current;
+        ctx.drawImage(
+          jerseyImgRef.current,
+          jerseyPosition.x,
+          jerseyPosition.y,
+          jerseyPosition.width,
+          jerseyPosition.height
+        );
 
-          if (video && video.videoWidth && video.videoHeight) {
-            const cw = canvas.width;
-            const ch = canvas.height;
-
-            const drawW = cw * 0.95;
-            const drawH = drawW * 1.15;
-
-            const drawX = (cw - drawW) / 2;
-            const drawY = ch * 0.16;
-
-            ctx.drawImage(
-              jerseyImgRef.current,
-              drawX,
-              drawY,
-              drawW,
-              drawH
-            );
-          }
-
-          ctx.globalAlpha = 1;
-        }
+        ctx.globalAlpha = 1;
+      }
 
       animFrameRef.current = requestAnimationFrame(drawFrame);
     };
