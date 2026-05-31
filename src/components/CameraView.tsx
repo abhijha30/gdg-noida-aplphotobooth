@@ -83,47 +83,29 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
       const drawFrame = () => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        if (jerseyImgRef.current && jerseyPosition && jerseyPosition.opacity > 0.01) {
-          // Video is CSS-mirrored, so canvas coords match what user sees
-          ctx.globalAlpha = Math.min(jerseyPosition.opacity, 0.92);
+        if (jerseyImgRef.current) {
+          ctx.globalAlpha = 0.92;
 
-          // Scale position from video coords to canvas display coords
           const video = videoRef.current;
+
           if (video && video.videoWidth && video.videoHeight) {
-            const vw = video.videoWidth;
-            const vh = video.videoHeight;
             const cw = canvas.width;
             const ch = canvas.height;
 
-            // Letterbox/cover scaling
-            const videoAspect = vw / vh;
-            const canvasAspect = cw / ch;
+            const drawX = cw * 0.02;
+            const drawY = ch * 0.15;
+            const drawW = cw * 0.96;
+            const drawH = ch * 0.82;
 
-            let scaleX: number, scaleY: number, offsetX: number, offsetY: number;
-
-            if (canvasAspect > videoAspect) {
-              // Canvas wider → video covers height
-              scaleY = ch / vh;
-              scaleX = scaleY;
-              offsetX = (cw - vw * scaleX) / 2;
-              offsetY = 0;
-            } else {
-              // Canvas taller → video covers width
-              scaleX = cw / vw;
-              scaleY = scaleX;
-              offsetX = 0;
-              offsetY = (ch - vh * scaleY) / 2;
-            }
-
-            // Mirror X (because video is CSS mirrored)
-            const mirroredX = vw - jerseyPosition.x - jerseyPosition.width;
-            const drawX = mirroredX * scaleX + offsetX;
-            const drawY = jerseyPosition.y * scaleY + offsetY;
-            const drawW = jerseyPosition.width * scaleX;
-            const drawH = jerseyPosition.height * scaleY;
-
-            ctx.drawImage(jerseyImgRef.current, drawX, drawY, drawW, drawH);
+            ctx.drawImage(
+              jerseyImgRef.current,
+              drawX,
+              drawY,
+              drawW,
+              drawH
+            );
           }
+
           ctx.globalAlpha = 1;
         }
 
