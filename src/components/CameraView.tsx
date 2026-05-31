@@ -84,35 +84,31 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         if (jerseyImgRef.current) {
-          ctx.globalAlpha = 0.92;
 
-          const video = videoRef.current;
+        const video = videoRef.current;
 
-          if (video && video.videoWidth && video.videoHeight) {
-            const cw = canvas.width;
-            const ch = canvas.height;
+        if (
+          video &&
+          video.videoWidth &&
+          video.videoHeight &&
+          jerseyPosition
+        ) {
+          ctx.globalAlpha = jerseyPosition.opacity;
 
-            const drawW = cw * 0.95;
-            const drawH = drawW * 1.15;
-
-            const drawX = (cw - drawW) / 2;
-            const drawY = ch * 0.16;
-
-            ctx.drawImage(
-              jerseyImgRef.current,
-              drawX,
-              drawY,
-              drawW,
-              drawH
-            );
-          }
-
-          ctx.globalAlpha = 1;
+          ctx.drawImage(
+            jerseyImgRef.current,
+            jerseyPosition.x,
+            jerseyPosition.y,
+            jerseyPosition.width,
+            jerseyPosition.height
+          );
         }
 
-        animFrameRef.current = requestAnimationFrame(drawFrame);
-      };
+        ctx.globalAlpha = 1;
+      }
 
+      animFrameRef.current = requestAnimationFrame(drawFrame);
+    };
       drawFrame();
       return () => {
         if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
