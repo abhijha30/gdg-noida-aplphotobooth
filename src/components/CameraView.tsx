@@ -221,14 +221,25 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
             style={{ transform: "scaleX(-1)" }}
           />
 
-          <canvas
+         <canvas
             ref={jerseyCanvasRef}
             className="absolute inset-0 z-10 pointer-events-none"
             style={{
-              width: "100%",
-              height: "100%",
-            }}
-          />
+            width: "100%",
+            height: "100%",
+          }}
+        />
+
+        {/* Collar Guide */}
+        <div className="absolute left-1/2 top-[18%] -translate-x-1/2 z-20 pointer-events-none">
+          <div className="w-28 h-28 border-4 border-white rounded-full border-dashed animate-pulse" />
+        </div>
+
+        {/* Shoulder Guide */}
+        <div className="absolute inset-0 z-20 pointer-events-none">
+          <div className="absolute left-[12%] top-[33%] w-10 h-10 border-l-4 border-t-4 border-white rounded-tl-lg" />
+        <div className="absolute right-[12%] top-[33%] w-10 h-10 border-r-4 border-t-4 border-white rounded-tr-lg" />
+        </div>
 
           {/* Viewfinder corners */}
           <div className="absolute inset-6 pointer-events-none">
