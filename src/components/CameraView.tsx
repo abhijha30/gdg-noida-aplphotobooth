@@ -238,11 +238,13 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
             style={{ transform: "scaleX(-1)" }}
           />
 
-          {/* Jersey overlay canvas */}
           <canvas
             ref={jerseyCanvasRef}
-            className="canvas-overlay"
-            style={{ width: "100%", height: "100%" }}
+            className="absolute inset-0 z-10 pointer-events-none"
+            style={{
+              width: "100%",
+              height: "100%",
+            }}
           />
 
           {/* Viewfinder corners */}
