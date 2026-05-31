@@ -15,6 +15,9 @@ export interface JerseyPosition {
   width: number;
   height: number;
   opacity: number;
+  // Store the canvas dimensions at detection time so capture can rescale correctly
+  canvasW: number;
+  canvasH: number;
 }
 
 interface UseFaceDetectionReturn {
@@ -26,8 +29,8 @@ interface UseFaceDetectionReturn {
   stopDetection: () => void;
 }
 
-// Faster tracking
-const LERP = 0.25;
+// Smooth tracking – lower = smoother but laggier, higher = snappier
+const LERP = 0.2;
 
 let faceDetectionModule: typeof import("@mediapipe/face_detection") | null = null;
 
@@ -54,7 +57,6 @@ export function useFaceDetection(): UseFaceDetectionReturn {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
-
     setIsDetecting(false);
   }, []);
 
@@ -79,6 +81,24 @@ export function useFaceDetection(): UseFaceDetectionReturn {
         const canvas = canvasRef.current;
         if (!canvas) return;
 
+        // ─── BUG FIX #1 ────────────────────────────────────────────────────────
+        // The canvas.width / canvas.height must reflect the actual rendered pixel
+        // size of the canvas DOM element, NOT the intrinsic video resolution.
+        // MediaPipe returns normalised [0..1] coords relative to the image it
+        // processed (the video frame), but we display the video scaled to fill
+        // the container.  We must therefore map the normalised coords onto the
+        // *display* canvas dimensions, not the video's native resolution.
+        //
+        // canvas.width and canvas.height are set by the ResizeObserver in
+        // CameraView, so they already represent the display size – that is
+        // correct.  The previous code was fine here but it set jerseyX to the
+        // face-centred value WITHOUT accounting for the mirroring applied to the
+        // video element (CSS scaleX(-1)).  MediaPipe processes the raw (un-
+        // mirrored) frame, so detection coords are in un-mirrored space.  When
+        // the canvas draws on top of a CSS-mirrored video the x-axis is flipped,
+        // so we must mirror the x coordinate before drawing.
+        // ────────────────────────────────────────────────────────────────────────
+
         const cw = canvas.width;
         const ch = canvas.height;
 
@@ -88,26 +108,35 @@ export function useFaceDetection(): UseFaceDetectionReturn {
           const detection = results.detections[0];
           const bbox = detection.boundingBox;
 
-          const faceX = (bbox.xCenter - bbox.width / 2) * cw;
-          const faceY = (bbox.yCenter - bbox.height / 2) * ch;
-          const faceW = bbox.width * cw;
-          const faceH = bbox.height * ch;
+          // Raw (un-mirrored) face bounds in display-canvas pixels
+          const rawFaceX = (bbox.xCenter - bbox.width / 2) * cw;
+          const faceY    = (bbox.yCenter - bbox.height / 2) * ch;
+          const faceW    = bbox.width  * cw;
+          const faceH    = bbox.height * ch;
 
-         // BETTER BODY FITTING
+          // ─── BUG FIX #2 ──────────────────────────────────────────────────────
+          // Mirror the x coordinate to match the CSS scaleX(-1) on the video.
+          // Without this the jersey trails to the opposite side from the face.
+          const mirroredFaceCenterX = cw - (rawFaceX + faceW / 2);
+          // ─────────────────────────────────────────────────────────────────────
 
-        const faceSize = Math.max(faceW, faceH);
+          const faceSize = Math.max(faceW, faceH);
 
-        // Scale automatically according to distance
-        const jerseyWidth = faceSize * 3.2;
-        const jerseyHeight = jerseyWidth * 1.35;
+          // Jersey width = ~3x face size; aspect ratio of the actual jersey PNG
+          const jerseyWidth  = faceSize * 3.2;
+          const jerseyHeight = jerseyWidth * 1.35;
 
-        // Center jersey on face
-        const jerseyX =
-          faceX + (faceW / 2) - (jerseyWidth / 2);
+          // Horizontally centre jersey on the (mirrored) face centre
+          const jerseyX = mirroredFaceCenterX - jerseyWidth / 2;
 
-        // Move jersey BELOW chin
-        const jerseyY =
-          faceY + (faceH * 0.95);
+          // ─── BUG FIX #3 ──────────────────────────────────────────────────────
+          // The collar of the jersey image sits at roughly the top 8% of the PNG.
+          // We want the collar opening to align just below the chin (faceY + faceH).
+          // So the top of the jersey PNG = chin position − collar-top offset
+          // collar offset ≈ jerseyHeight * 0.08  (tune this constant to taste)
+          const COLLAR_OFFSET = jerseyHeight * 0.08;
+          const jerseyY = faceY + faceH * 0.90 - COLLAR_OFFSET;
+          // ─────────────────────────────────────────────────────────────────────
 
           const target: JerseyPosition = {
             x: jerseyX,
@@ -115,29 +144,21 @@ export function useFaceDetection(): UseFaceDetectionReturn {
             width: jerseyWidth,
             height: jerseyHeight,
             opacity: 1,
+            canvasW: cw,
+            canvasH: ch,
           };
 
           if (!smoothedPos.current) {
             smoothedPos.current = target;
           } else {
             smoothedPos.current = {
-              x:
-                smoothedPos.current.x +
-                (target.x - smoothedPos.current.x) * LERP,
-
-              y:
-                smoothedPos.current.y +
-                (target.y - smoothedPos.current.y) * LERP,
-
-              width:
-                smoothedPos.current.width +
-                (target.width - smoothedPos.current.width) * LERP,
-
-              height:
-                smoothedPos.current.height +
-                (target.height - smoothedPos.current.height) * LERP,
-
+              x:       smoothedPos.current.x      + (target.x      - smoothedPos.current.x)      * LERP,
+              y:       smoothedPos.current.y      + (target.y      - smoothedPos.current.y)      * LERP,
+              width:   smoothedPos.current.width  + (target.width  - smoothedPos.current.width)  * LERP,
+              height:  smoothedPos.current.height + (target.height - smoothedPos.current.height) * LERP,
               opacity: 1,
+              canvasW: cw,
+              canvasH: ch,
             };
           }
 
@@ -148,12 +169,10 @@ export function useFaceDetection(): UseFaceDetectionReturn {
           if (smoothedPos.current) {
             smoothedPos.current = {
               ...smoothedPos.current,
-              opacity: Math.max(
-                0,
-                smoothedPos.current.opacity - 0.05
-              ),
+              opacity: Math.max(0, smoothedPos.current.opacity - 0.05),
+              canvasW: cw,
+              canvasH: ch,
             };
-
             setJerseyPosition({ ...smoothedPos.current });
           }
         }
@@ -166,41 +185,45 @@ export function useFaceDetection(): UseFaceDetectionReturn {
           rafRef.current = requestAnimationFrame(detect);
           return;
         }
-
         try {
           await detector.send({ image: video });
-        } catch {}
-
+        } catch { /* ignore transient errors */ }
         rafRef.current = requestAnimationFrame(detect);
       };
 
       rafRef.current = requestAnimationFrame(detect);
     } catch (err) {
       console.error("Face detection init error:", err);
-
       setIsDetecting(false);
 
+      // ─── BUG FIX #4 ──────────────────────────────────────────────────────────
+      // Fallback position: place jersey centred in lower-half of canvas rather
+      // than using hardcoded 0.1/0.35 which looks wrong on all screen sizes.
       const canvas = canvasRef.current;
-
       if (canvas) {
+        const cw = canvas.width  || 390;
+        const ch = canvas.height || 700;
+        const jw = cw * 0.82;
+        const jh = jw * 1.35;
         const fallback: JerseyPosition = {
-          x: canvas.width * 0.1,
-          y: canvas.height * 0.35,
-          width: canvas.width * 0.8,
-          height: canvas.width * 1.05,
+          x:       (cw - jw) / 2,
+          y:       ch * 0.30,
+          width:   jw,
+          height:  jh,
           opacity: 1,
+          canvasW: cw,
+          canvasH: ch,
         };
-
         smoothedPos.current = fallback;
         setJerseyPosition(fallback);
       }
+      // ─────────────────────────────────────────────────────────────────────────
     }
   }, []);
 
   useEffect(() => {
     return () => {
       stopDetection();
-
       if (detectorRef.current) {
         detectorRef.current.close();
       }
