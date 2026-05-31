@@ -53,7 +53,7 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
     useEffect(() => {
       const img = new Image();
       img.crossOrigin = "anonymous";
-      img.src = "/jersey.jpeg.png";
+      img.src = "/jersey-overlay.png";
       img.onload = () => { jerseyImgRef.current = img; };
     }, []);
 
