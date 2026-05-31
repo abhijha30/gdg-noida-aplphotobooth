@@ -108,28 +108,25 @@ export const CameraView = forwardRef<CameraViewHandle, CameraViewProps>(
 
       const drawFrame = () => {
         if (!running) return;
-        
+
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        if (jerseyImgRef.current) {
-          ctx.globalAlpha = 0.92;
+        if (jerseyImgRef.current && jerseyPosition) {
+          ctx.globalAlpha = jerseyPosition.opacity;
 
-          if (jerseyImgRef.current && jerseyPosition) {
-            ctx.globalAlpha = jerseyPosition.opacity;
+        ctx.drawImage(
+          jerseyImgRef.current,
+          jerseyPosition.x,
+          jerseyPosition.y,
+          jerseyPosition.width,
+          jerseyPosition.height
+        );
 
-            ctx.drawImage(
-              jerseyImgRef.current,
-              jerseyPosition.x,
-              jerseyPosition.y,
-              jerseyPosition.width,
-              jerseyPosition.height
-            );
+        ctx.globalAlpha = 1;
+      }
 
-            ctx.globalAlpha = 1;
-          }
-          
-          animFrameRef.current = requestAnimationFrame(drawFrame);
-        };
+      animFrameRef.current = requestAnimationFrame(drawFrame);
+    };
       drawFrame();
 
       return () => {
