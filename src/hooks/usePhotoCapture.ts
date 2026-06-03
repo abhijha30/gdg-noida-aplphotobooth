@@ -27,16 +27,33 @@ export function computeJerseyLayout(
   canvasW: number,
   canvasH: number,
   jerseyNatW: number,
-  jerseyNatH: number
+  jerseyNatH: number,
+  faceX = 0.5,
+  faceY = 0.22,
+  faceW = 0.18,
+  faceH = 0.18
 ): JerseyLayout {
-  const jerseyW = canvasW * 0.92;
-  const jerseyH = jerseyW * (jerseyNatH / jerseyNatW);
-  const jerseyX = (canvasW - jerseyW) / 2;
-  // Collar top at 38% of canvas height
-  const jerseyY = canvasH * 0.38;
-  return { x: jerseyX, y: jerseyY, width: jerseyW, height: jerseyH };
-}
 
+  const faceWidthPx = faceW * canvasW;
+
+  const jerseyW = faceWidthPx * 3.5;
+  const jerseyH = jerseyW * (jerseyNatH / jerseyNatW);
+
+  const faceCenterX = faceX * canvasW;
+
+  const jerseyX = faceCenterX - jerseyW / 2;
+
+  const jerseyY =
+    (faceY * canvasH) +
+    (faceH * canvasH * 0.8);
+
+  return {
+    x: jerseyX,
+    y: jerseyY,
+    width: jerseyW,
+    height: jerseyH,
+  };
+}
 export function usePhotoCapture(
   videoRef: React.RefObject<HTMLVideoElement>,
   overlayImageRef: React.RefObject<HTMLImageElement>
