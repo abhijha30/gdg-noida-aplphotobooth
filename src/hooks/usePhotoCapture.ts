@@ -56,8 +56,15 @@ export function computeJerseyLayout(
 }
 export function usePhotoCapture(
   videoRef: React.RefObject<HTMLVideoElement>,
-  overlayImageRef: React.RefObject<HTMLImageElement>
-) {
+  overlayImageRef: React.RefObject<HTMLImageElement>,
+  facePosition: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }
+)
+ {
   const captureCanvas = useRef<HTMLCanvasElement | null>(null);
 
   const capturePhoto = useCallback((): CaptureResult | null => {
@@ -110,12 +117,16 @@ export function usePhotoCapture(
     ctx.restore();
 
     // ── 3. Draw jersey overlay at FIXED position ─────────────────────────
-    const layout = computeJerseyLayout(
-      OUTPUT_W,
-      OUTPUT_H,
-      jerseyImg.naturalWidth || jerseyImg.width,
-      jerseyImg.naturalHeight || jerseyImg.height
-    );
+   const layout = computeJerseyLayout(
+  OUTPUT_W,
+  OUTPUT_H,
+  jerseyImg.naturalWidth || jerseyImg.width,
+  jerseyImg.naturalHeight || jerseyImg.height,
+  facePosition.x,
+  facePosition.y,
+  facePosition.width,
+  facePosition.height
+);
     ctx.drawImage(jerseyImg, layout.x, layout.y, layout.width, layout.height);
 
     const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
